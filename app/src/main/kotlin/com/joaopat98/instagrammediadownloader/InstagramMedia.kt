@@ -100,10 +100,17 @@ internal object InstagramMedia {
         }
 
     fun extract(page: Document, link: Link): List<Asset> {
-        val candidates = page.select("script[type=application/json], script[type=application/ld+json]")
+        val candidates = page.select("script")
             .asSequence()
             .flatMap { script ->
-                matchingMedia(parseJson(script.data()), link, 0)
+                val body = script.data()
+                val data = when {
+                    script.attr("type") in setOf("application/json", "application/ld+json") -> parseJson(body)
+                    body.contains("\"PolarisEmbedSimple\"") && body.contains("\"contextJSON\"") ->
+                        parseJson(body.substringAfter("s.handle(", ""))
+                    else -> null
+                }
+                matchingMedia(data, link, 0)
             }
         val best = candidates.maxWithOrNull(compareBy({ it.size }, { it.count(Asset::video) }))
         if (best != null) return best

@@ -49,7 +49,14 @@ class InstagramMediaTest {
         val context = org.json.JSONObject.quote("""
             {"gql_data":{"shortcode_media":{"shortcode":"Reel","is_video":true,"video_url":"$cdn/reel.mp4"}}}
         """.trimIndent())
-        val page = Jsoup.parse("""<script type="application/json">{"contextJSON":$context}</script>""")
+        val page = Jsoup.parse("""
+            <script nonce="fixture">
+                requireLazy(["ServerJS"],function(ServerJS){
+                    var s=(new ServerJS());
+                    s.handle({"require":[["PolarisEmbedSimple","init",[],[{"contextJSON":$context}]]]});
+                });
+            </script>
+        """.trimIndent())
         assertEquals(listOf(InstagramMedia.Asset("$cdn/reel.mp4", true)), InstagramMedia.extract(page, link))
     }
 
