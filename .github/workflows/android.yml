@@ -1,0 +1,67 @@
+name: Android
+
+on:
+  push:
+    branches: [develop, main]
+  pull_request:
+    branches: [develop, main]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Build and verify
+        run: bash gradlew --no-daemon testDebugUnitTest lintDebug assembleDebug
+      - uses: actions/upload-artifact@v4
+        with:
+          name: InstagramMediaDownloader-debug
+          path: app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+
+  release:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Build signed APK
+        env:
+          RELEASE_KEYSTORE: ${{ secrets.ANDROID_RELEASE_KEYSTORE }}
+          RELEASE_PASSWORD: ${{ secrets.ANDROID_RELEASE_PASSWORD }}
+          RELEASE_BUILD_NUMBER: ${{ github.run_number }}
+        run: |
+          set -euo pipefail
+          test -n "$RELEASE_KEYSTORE" && test -n "$RELEASE_PASSWORD"
+          export RELEASE_STORE_FILE="$RUNNER_TEMP/release.p12"
+          trap 'rm -f "$RELEASE_STORE_FILE"' EXIT
+          printf '%s' "$RELEASE_KEYSTORE" | base64 --decode > "$RELEASE_STORE_FILE"
+          bash gradlew --no-daemon assembleRelease
+          cp app/build/outputs/apk/release/app-release.apk InstagramMediaDownloader.apk
+      - name: Publish GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          tag="v1.0.$GITHUB_RUN_NUMBER"
+          if gh release view "$tag" >/dev/null 2>&1; then
+            gh release upload "$tag" InstagramMediaDownloader.apk --clobber
+          else
+            gh release create "$tag" InstagramMediaDownloader.apk \
+              --target "$GITHUB_SHA" --title "$tag" --generate-notes
+          fi

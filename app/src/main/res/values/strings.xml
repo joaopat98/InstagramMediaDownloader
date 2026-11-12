@@ -1,0 +1,18 @@
+<resources>
+    <string name="app_name">Instagram Media Downloader</string>
+    <string name="instructions">Paste a post, reel, or story link, or share it here from Instagram.</string>
+    <string name="link_hint">Instagram link</string>
+    <string name="download">Download</string>
+    <string name="finding_media">Finding media…</string>
+    <string name="invalid_link">Enter a link to an Instagram post, reel, or story.</string>
+    <string name="network_error">Couldn’t reach Instagram. Check your connection and try again.</string>
+    <string name="queue_error">Couldn’t start the download. Try again.</string>
+    <string name="more_links">%1$s\nMore links are waiting.</string>
+    <string name="partial_queue">%1$d of %2$d files queued. Android couldn’t queue the rest.</string>
+    <string name="open_downloads">Open Downloads</string>
+    <string name="open_files">Open the Downloads folder in your Files app.</string>
+    <plurals name="queued">
+        <item quantity="one">%d file queued in Downloads.</item>
+        <item quantity="other">%d files queued in Downloads.</item>
+    </plurals>
+</resources>
