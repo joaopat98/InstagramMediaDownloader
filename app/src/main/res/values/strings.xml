@@ -1,5 +1,5 @@
 <resources>
-    <string name="app_name">Instagram Media Downloader</string>
+    <string name="app_name">Souvenir</string>
     <string name="instructions">Paste a post, reel, or story link, or share it here from Instagram.</string>
     <string name="link_hint">Instagram link</string>
     <string name="download">Download</string>

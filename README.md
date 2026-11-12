@@ -1,8 +1,8 @@
-# Instagram Media Downloader
+# Souvenir
 
-Android app for saving Instagram photos and videos to `Downloads/InstagramMediaDownloader`.
+Android app for saving Instagram photos and videos to `Downloads/Souvenir`.
 
-- In Instagram, open a post, reel, or story, tap **Share**, and choose **Instagram Media Downloader** from the Android Sharesheet. The app starts looking for media immediately.
+- In Instagram, open a post, reel, or story, tap **Share**, and choose **Souvenir** from the Android Sharesheet. The app starts looking for media immediately.
 - Or open the downloader, paste an Instagram link, and tap **Download**.
 
 The app contacts Instagram directly and downloads the image and video files it finds, including carousel items when Instagram exposes them. Story downloads require sign-in. Sign in on Instagram’s own page inside the app to retry automatically. The session stays on the device and is used for Instagram page requests. Expired stories, content your account cannot access, and links whose pages do not expose media files can still fail.

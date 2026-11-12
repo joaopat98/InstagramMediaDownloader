@@ -3,7 +3,7 @@ set -euo pipefail
 kind=$1
 link=$2
 activity=com.joaopat98.instagrammediadownloader/.MainActivity
-directory=/sdcard/Download/InstagramMediaDownloader
+directory=/sdcard/Download/Souvenir
 shortcode=$(printf '%s' "$link" | sed -E 's@[?#].*@@; s@/$@@; s@.*/@@')
 [[ $shortcode =~ ^[A-Za-z0-9_-]+$ ]]
 adb shell am force-stop com.joaopat98.instagrammediadownloader

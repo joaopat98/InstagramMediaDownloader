@@ -43,7 +43,7 @@ jobs:
             status=0; if [ -n "$INSTAGRAM_TEST_LINK" ]; then bash scripts/android-instagram-download-smoke.sh post "$INSTAGRAM_TEST_LINK" || status=1; fi; if [ -n "$INSTAGRAM_TEST_REEL" ]; then bash scripts/android-instagram-download-smoke.sh reel "$INSTAGRAM_TEST_REEL" || status=1; fi; if [ -n "$INSTAGRAM_TEST_STORY" ]; then bash scripts/android-instagram-download-smoke.sh story "$INSTAGRAM_TEST_STORY" || status=1; fi; exit "$status"
       - uses: actions/upload-artifact@v7
         with:
-          name: InstagramMediaDownloader-debug
+          name: Souvenir-debug
           path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
 
@@ -74,7 +74,7 @@ jobs:
           trap 'rm -f "$RELEASE_STORE_FILE"' EXIT
           printf '%s' "$RELEASE_KEYSTORE" | base64 --decode > "$RELEASE_STORE_FILE"
           bash gradlew --no-daemon assembleRelease
-          cp app/build/outputs/apk/release/app-release.apk InstagramMediaDownloader.apk
+          cp app/build/outputs/apk/release/app-release.apk Souvenir.apk
       - name: Publish GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -82,8 +82,8 @@ jobs:
           set -euo pipefail
           tag="v1.0.$GITHUB_RUN_NUMBER"
           if gh release view "$tag" >/dev/null 2>&1; then
-            gh release upload "$tag" InstagramMediaDownloader.apk --clobber
+            gh release upload "$tag" Souvenir.apk --clobber
           else
-            gh release create "$tag" InstagramMediaDownloader.apk \
-              --target "$GITHUB_SHA" --title "$tag" --generate-notes
+            gh release create "$tag" Souvenir.apk \
+              --target "$GITHUB_SHA" --title "Souvenir $tag" --generate-notes
           fi

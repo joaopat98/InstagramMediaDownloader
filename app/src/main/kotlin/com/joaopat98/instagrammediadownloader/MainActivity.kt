@@ -293,7 +293,7 @@ class MainActivity : Activity() {
                         .setTitle(filename)
                         .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
                         .setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS,
-                            "InstagramMediaDownloader/$filename"))
+                            "Souvenir/$filename"))
                 } catch (error: RuntimeException) {
                     if (index == 0) throw error
                     return Result(context.getString(R.string.partial_queue, index, assets.size), error = true)

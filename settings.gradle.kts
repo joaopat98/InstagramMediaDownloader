@@ -14,5 +14,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "InstagramMediaDownloader"
+rootProject.name = "Souvenir"
 include(":app")
