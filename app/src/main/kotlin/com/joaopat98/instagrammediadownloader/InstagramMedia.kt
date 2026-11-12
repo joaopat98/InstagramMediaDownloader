@@ -22,6 +22,7 @@ internal object InstagramMedia {
 
     data class Link(val uri: URI, val kind: String, val id: String)
     data class Asset(val url: String, val video: Boolean)
+    class Unavailable : IOException()
 
     fun findLink(text: String?): Link? = linkPattern.findAll(text.orEmpty()).firstNotNullOfOrNull {
         parseUri(it.value.replace(trailingPunctuation, ""))?.let(::parseLink)
@@ -47,16 +48,18 @@ internal object InstagramMedia {
         }
     }
 
-    fun resolve(initialLink: Link): List<Asset> {
+    fun resolve(initialLink: Link, cookies: (String) -> String? = { null }): List<Asset> {
         var link = initialLink
         for (attempt in 0..5) {
-            val response = Jsoup.connect(link.uri.toString())
+            val url = link.uri.toString()
+            val request = Jsoup.connect(url)
                 .userAgent(USER_AGENT)
                 .timeout(12_000)
                 .maxBodySize(12 * 1024 * 1024)
                 .followRedirects(false)
                 .ignoreHttpErrors(true)
-                .execute()
+            cookies(url)?.takeIf(String::isNotBlank)?.let { request.header("Cookie", it) }
+            val response = request.execute()
             when (val status = response.statusCode()) {
                 in 300..399 -> {
                     val location = response.header("Location")?.let(::parseUri)
@@ -72,7 +75,7 @@ internal object InstagramMedia {
                 else -> break
             }
         }
-        throw IOException("Instagram did not expose a downloadable file. The link may require sign-in, have expired, or be unavailable.")
+        throw Unavailable()
     }
 
     fun extract(page: Document, link: Link): List<Asset> {

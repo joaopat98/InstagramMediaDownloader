@@ -7,6 +7,8 @@
     <string name="invalid_link">Enter a link to an Instagram post, reel, or story.</string>
     <string name="network_error">Couldn’t reach Instagram. Check your connection and try again.</string>
     <string name="queue_error">Couldn’t start the download. Try again.</string>
+    <string name="media_unavailable">Instagram didn’t return a downloadable file. The link may require sign-in or have expired.</string>
+    <string name="sign_in">Sign in to Instagram</string>
     <string name="more_links">%1$s\nMore links are waiting.</string>
     <string name="partial_queue">%1$d of %2$d files queued. Android couldn’t queue the rest.</string>
     <string name="open_downloads">Open Downloads</string>

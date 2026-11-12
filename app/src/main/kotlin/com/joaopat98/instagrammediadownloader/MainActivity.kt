@@ -21,6 +21,7 @@ import android.view.WindowInsets
 import android.view.WindowInsetsController
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputMethodManager
+import android.webkit.CookieManager
 import android.widget.Button
 import android.widget.EditText
 import android.widget.LinearLayout
@@ -37,6 +38,7 @@ class MainActivity : Activity() {
     private lateinit var input: EditText
     private lateinit var download: Button
     private lateinit var status: TextView
+    private lateinit var signIn: Button
     private lateinit var state: DownloadState
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -53,6 +55,14 @@ class MainActivity : Activity() {
         super.onNewIntent(intent)
         setIntent(intent)
         acceptShare(intent)
+    }
+
+    @Suppress("DEPRECATION")
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode == SIGN_IN && resultCode == RESULT_OK) {
+            state.retryLink?.let { submit(it.toString(), shared = true) }
+        }
     }
 
     override fun onSaveInstanceState(outState: Bundle) {
@@ -87,11 +97,14 @@ class MainActivity : Activity() {
 
         val pending = state
         if (!pending.active.add(link.uri)) return
+        pending.retryLink = null
         pending.update(getString(R.string.finding_media))
         val app = applicationContext
         worker.execute {
             val result = try {
                 queueDownloads(app, link)
+            } catch (_: InstagramMedia.Unavailable) {
+                Result(app.getString(R.string.media_unavailable), error = true, retryLink = link.uri)
             } catch (error: IOException) {
                 val detail = error.message?.takeIf { it.startsWith("Instagram ") }
                 Result(detail ?: app.getString(R.string.network_error), error = true)
@@ -100,6 +113,7 @@ class MainActivity : Activity() {
             }
             main.post {
                 pending.active.remove(link.uri)
+                pending.retryLink = result.retryLink
                 val message = if (pending.active.isEmpty()) result.message
                     else app.getString(R.string.more_links, result.message)
                 pending.update(message, result.error)
@@ -113,6 +127,8 @@ class MainActivity : Activity() {
         status.setTextColor(if (state.error) errorColor else muted)
         status.text = state.message
         status.visibility = if (state.message.isEmpty()) View.GONE else View.VISIBLE
+        signIn.visibility = if (state.retryLink != null && state.active.isEmpty() &&
+            !InstagramLoginActivity.hasSession()) View.VISIBLE else View.GONE
     }
 
     @Suppress("DEPRECATION")
@@ -190,6 +206,17 @@ class MainActivity : Activity() {
         }
         content.add(status, 16)
 
+        signIn = Button(this, null, android.R.attr.borderlessButtonStyle).apply {
+            isAllCaps = false
+            setText(R.string.sign_in)
+            setTextColor(green)
+            setOnClickListener {
+                @Suppress("DEPRECATION")
+                startActivityForResult(Intent(this@MainActivity, InstagramLoginActivity::class.java), SIGN_IN)
+            }
+        }
+        content.add(signIn, 8)
+
         content.add(Button(this, null, android.R.attr.borderlessButtonStyle).apply {
             isAllCaps = false
             setText(R.string.open_downloads)
@@ -230,6 +257,7 @@ class MainActivity : Activity() {
         var message = ""
         var error = false
         var observer: (() -> Unit)? = null
+        var retryLink: URI? = null
 
         fun update(message: String, error: Boolean = false) {
             this.message = message
@@ -238,9 +266,10 @@ class MainActivity : Activity() {
         }
     }
 
-    private data class Result(val message: String, val error: Boolean = false)
+    private data class Result(val message: String, val error: Boolean = false, val retryLink: URI? = null)
 
     private companion object {
+        const val SIGN_IN = 1
         val paper = Color.rgb(245, 248, 244)
         val ink = Color.rgb(24, 45, 38)
         val muted = Color.rgb(66, 90, 80)
@@ -250,7 +279,7 @@ class MainActivity : Activity() {
         val main = Handler(Looper.getMainLooper())
 
         fun queueDownloads(context: Context, link: InstagramMedia.Link): Result {
-            val assets = InstagramMedia.resolve(link)
+            val assets = InstagramMedia.resolve(link, CookieManager.getInstance()::getCookie)
             val manager = checkNotNull(context.getSystemService(DownloadManager::class.java))
             val batch = UUID.randomUUID().toString().take(8)
             for ((index, asset) in assets.withIndex()) {
