@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-set -euo pipefail
+set -Eeuo pipefail
 
 apk=$1
 package=com.joaopat98.instagrammediadownloader

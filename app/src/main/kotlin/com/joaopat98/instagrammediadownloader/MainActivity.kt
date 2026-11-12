@@ -137,6 +137,7 @@ class MainActivity : Activity() {
             setBackgroundColor(paper)
             isFillViewport = true
         }
+        setContentView(scroll)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             window.setDecorFitsSystemWindows(false)
             val appearance = WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS or
@@ -230,7 +231,6 @@ class MainActivity : Activity() {
             }
         }, 12)
 
-        setContentView(scroll)
         content.requestFocus()
     }
 

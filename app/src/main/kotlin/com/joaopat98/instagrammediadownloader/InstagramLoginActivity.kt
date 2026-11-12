@@ -42,6 +42,7 @@ class InstagramLoginActivity : Activity() {
                 }
             }
         }
+        setContentView(web)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             window.setDecorFitsSystemWindows(false)
             val appearance = WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS or
@@ -58,7 +59,6 @@ class InstagramLoginActivity : Activity() {
             window.decorView.systemUiVisibility = View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR or
                 View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR
         }
-        setContentView(web)
         if (savedInstanceState == null || web.restoreState(savedInstanceState) == null) {
             web.loadUrl("$ORIGIN/accounts/login/")
         }

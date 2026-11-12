@@ -31,7 +31,7 @@ jobs:
       - name: Test app startup on Android
         uses: reactivecircus/android-emulator-runner@v2
         with:
-          api-level: 35
+          api-level: 36
           target: google_apis
           arch: x86_64
           script: bash scripts/android-startup-smoke.sh app/build/outputs/apk/debug/app-debug.apk
