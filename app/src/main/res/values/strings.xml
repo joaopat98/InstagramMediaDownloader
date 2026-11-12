@@ -8,6 +8,7 @@
     <string name="network_error">Couldn’t reach Instagram. Check your connection and try again.</string>
     <string name="queue_error">Couldn’t start the download. Try again.</string>
     <string name="media_unavailable">Instagram didn’t return a downloadable file. The link may require sign-in or have expired.</string>
+    <string name="story_sign_in_required">Sign in to Instagram to download this story.</string>
     <string name="sign_in">Sign in to Instagram</string>
     <string name="more_links">%1$s\nMore links are waiting.</string>
     <string name="partial_queue">%1$d of %2$d files queued. Android couldn’t queue the rest.</string>

@@ -27,5 +27,13 @@ check_home
 
 adb shell am force-stop "$package"
 adb shell am start -W -a android.intent.action.SEND -t text/plain \
+    --es android.intent.extra.TEXT 'https://www.instagram.com/stories/example/123/' -n "$activity"
+check_home
+adb shell uiautomator dump /sdcard/imd-startup.xml
+ui=$(adb shell cat /sdcard/imd-startup.xml)
+grep -Fq 'Sign in to Instagram to download this story.' <<< "$ui"
+
+adb shell am force-stop "$package"
+adb shell am start -W -a android.intent.action.SEND -t text/plain \
     --es android.intent.extra.TEXT 'invalid-link-for-smoke-test' -n "$activity"
 check_home

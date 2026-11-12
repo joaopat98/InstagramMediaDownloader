@@ -82,6 +82,12 @@ class InstagramMediaTest {
         )
     }
 
+    @Test(expected = InstagramMedia.StorySignInRequired::class)
+    fun rejectsSignedOutStoryBeforeFetching() {
+        val link = requireNotNull(InstagramMedia.findLink("https://instagram.com/stories/example/123/"))
+        InstagramMedia.resolve(link) { "csrftoken=fixture; sessionid=" }
+    }
+
     @Test fun selectsExactStory() {
         val link = requireNotNull(InstagramMedia.findLink("https://instagram.com/stories/example/123/"))
         val page = Jsoup.parse("""

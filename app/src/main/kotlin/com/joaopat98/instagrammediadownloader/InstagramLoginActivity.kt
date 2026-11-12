@@ -78,9 +78,6 @@ class InstagramLoginActivity : Activity() {
     internal companion object {
         private const val ORIGIN = "https://www.instagram.com"
 
-        fun hasSession(): Boolean = CookieManager.getInstance().getCookie(ORIGIN)
-            ?.split(';')
-            ?.any { it.trimStart().startsWith("sessionid=") && it.substringAfter('=').isNotBlank() }
-            ?: false
+        fun hasSession(): Boolean = InstagramMedia.hasSession(CookieManager.getInstance().getCookie(ORIGIN))
     }
 }

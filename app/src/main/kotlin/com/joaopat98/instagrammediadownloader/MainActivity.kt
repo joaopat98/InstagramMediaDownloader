@@ -103,6 +103,8 @@ class MainActivity : Activity() {
         worker.execute {
             val result = try {
                 queueDownloads(app, link)
+            } catch (_: InstagramMedia.StorySignInRequired) {
+                Result(app.getString(R.string.story_sign_in_required), error = true, retryLink = link.uri)
             } catch (_: InstagramMedia.Unavailable) {
                 Result(app.getString(R.string.media_unavailable), error = true, retryLink = link.uri)
             } catch (error: IOException) {

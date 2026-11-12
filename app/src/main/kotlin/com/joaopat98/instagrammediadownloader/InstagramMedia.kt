@@ -22,6 +22,11 @@ internal object InstagramMedia {
     data class Link(val uri: URI, val kind: String, val id: String)
     data class Asset(val url: String, val video: Boolean)
     class Unavailable : IOException()
+    class StorySignInRequired : IOException()
+
+    fun hasSession(cookie: String?): Boolean = cookie?.split(';')
+        ?.any { it.trimStart().startsWith("sessionid=") && it.substringAfter('=').isNotBlank() }
+        ?: false
 
     fun findLink(text: String?): Link? = linkPattern.findAll(text.orEmpty()).firstNotNullOfOrNull {
         parseUri(it.value.replace(trailingPunctuation, ""))?.let(::parseLink)
@@ -52,7 +57,9 @@ internal object InstagramMedia {
         var link = initialLink
         for (attempt in 0..5) {
             val url = link.uri.toString()
-            val response = request(url, cookies(url)).execute()
+            val cookie = cookies(url)
+            if (link.kind == "story" && !hasSession(cookie)) throw StorySignInRequired()
+            val response = request(url, cookie).execute()
             when (val status = response.statusCode()) {
                 in 300..399 -> {
                     val location = response.header("Location")?.let(::parseUri)
