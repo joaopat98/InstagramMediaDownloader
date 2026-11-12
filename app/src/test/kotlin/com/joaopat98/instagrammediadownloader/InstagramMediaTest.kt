@@ -34,12 +34,12 @@ class InstagramMediaTest {
     @Test fun embedPhotoMustMatchTheRequestedPost() {
         val link = requireNotNull(InstagramMedia.findLink("https://instagram.com/p/Post/"))
         val page = Jsoup.parse("""
-            <a data-media-type="GraphImage" href="https://www.instagram.com/creator/p/Wrong/">
+            <div class="Embed" data-media-type="GraphImage" data-permalink="https://www.instagram.com/creator/p/Wrong/">
               <img class="EmbeddedMediaImage" src="$cdn/wrong.jpg">
-            </a>
-            <a data-media-type="GraphImage" href="https://www.instagram.com/creator/p/Post/">
+            </div>
+            <div class="Embed" data-media-type="GraphImage" data-permalink="https://www.instagram.com/creator/p/Post/">
               <img class="EmbeddedMediaImage" src="$cdn/photo.jpg">
-            </a>
+            </div>
         """.trimIndent())
         assertEquals(InstagramMedia.Asset("$cdn/photo.jpg", false), InstagramMedia.extractEmbeddedPhoto(page, link))
     }

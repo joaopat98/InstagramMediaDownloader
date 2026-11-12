@@ -17,8 +17,7 @@ internal object InstagramMedia {
         """/(?:(?:(?!(?:stories|share)/)[\w.]+/)?(p|reel|reels|tv)/([\w-]+)|stories/[\w.]+/(\d+)|share/(?:(?:p|reel|stories)/)?([\w-]+))/?"""
     )
     private val hosts = setOf("instagram.com", "www.instagram.com", "m.instagram.com")
-    private const val USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 " +
-        "(KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
+    private const val USER_AGENT = "InstagramMediaDownloader/1.0"
 
     data class Link(val uri: URI, val kind: String, val id: String)
     data class Asset(val url: String, val video: Boolean)
@@ -88,10 +87,10 @@ internal object InstagramMedia {
         .apply { cookie?.takeIf(String::isNotBlank)?.let { header("Cookie", it) } }
 
     fun extractEmbeddedPhoto(page: Document, link: Link): Asset? = page
-        .select("[data-media-type=GraphImage][href] img.EmbeddedMediaImage[src]")
-        .firstNotNullOfOrNull { image ->
-            val permalink = image.closest("[data-media-type=GraphImage][href]")?.attr("href")
-            if (findLink(permalink)?.id == link.id) asset(image.attr("src"), false) else null
+        .select(".Embed[data-media-type=GraphImage][data-permalink]")
+        .firstNotNullOfOrNull { embed ->
+            if (findLink(embed.attr("data-permalink"))?.id != link.id) return@firstNotNullOfOrNull null
+            asset(embed.select("img.EmbeddedMediaImage[src]").attr("src"), false)
         }
 
     fun extract(page: Document, link: Link): List<Asset> {
