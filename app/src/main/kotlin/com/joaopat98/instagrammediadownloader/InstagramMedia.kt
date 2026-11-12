@@ -71,9 +71,15 @@ internal object InstagramMedia {
                 else -> break
             }
         }
-        if (link.kind == "p") {
-            val embed = request("https://www.instagram.com/p/${link.id}/embed/").execute()
-            if (embed.statusCode() == 200) extractEmbeddedPhoto(embed.parse(), link)?.let { return listOf(it) }
+        if (link.kind in setOf("p", "reel", "reels")) {
+            val path = if (link.kind == "p") "p" else "reel"
+            val embed = request("https://www.instagram.com/$path/${link.id}/embed/").execute()
+            if (embed.statusCode() == 200) {
+                val page = embed.parse()
+                val assets = extract(page, link)
+                if (assets.isNotEmpty()) return assets
+                if (link.kind == "p") extractEmbeddedPhoto(page, link)?.let { return listOf(it) }
+            }
         }
         throw Unavailable()
     }
@@ -97,12 +103,7 @@ internal object InstagramMedia {
         val candidates = page.select("script[type=application/json], script[type=application/ld+json]")
             .asSequence()
             .flatMap { script ->
-                val data = try {
-                    JSONTokener(script.data()).nextValue()
-                } catch (_: JSONException) {
-                    null
-                }
-                matchingMedia(data, link, 0)
+                matchingMedia(parseJson(script.data()), link, 0)
             }
         val best = candidates.maxWithOrNull(compareBy({ it.size }, { it.count(Asset::video) }))
         if (best != null) return best
@@ -123,6 +124,12 @@ internal object InstagramMedia {
 
     private fun meta(page: Document, property: String) = page.select("meta[property='$property']").attr("content")
 
+    private fun parseJson(raw: String): Any? = try {
+        JSONTokener(raw).nextValue()
+    } catch (_: JSONException) {
+        null
+    }
+
     private fun matchingMedia(value: Any?, link: Link, depth: Int): Sequence<List<Asset>> = sequence {
         if (depth > 90) return@sequence
         when (value) {
@@ -131,7 +138,10 @@ internal object InstagramMedia {
                     val items = mediaFrom(value)
                     if (items.isNotEmpty()) yield(items)
                 }
-                for (key in value.keys()) yieldAll(matchingMedia(value.opt(key), link, depth + 1))
+                for (key in value.keys()) {
+                    val child = if (key == "contextJSON") parseJson(value.optString(key)) else value.opt(key)
+                    yieldAll(matchingMedia(child, link, depth + 1))
+                }
             }
             is JSONArray -> for (index in 0 until value.length()) {
                 yieldAll(matchingMedia(value.opt(index), link, depth + 1))

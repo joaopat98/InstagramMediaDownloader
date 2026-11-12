@@ -44,6 +44,15 @@ class InstagramMediaTest {
         assertEquals(InstagramMedia.Asset("$cdn/photo.jpg", false), InstagramMedia.extractEmbeddedPhoto(page, link))
     }
 
+    @Test fun extractsReelVideoFromSerializedEmbedContext() {
+        val link = requireNotNull(InstagramMedia.findLink("https://instagram.com/reel/Reel/"))
+        val context = org.json.JSONObject.quote("""
+            {"gql_data":{"shortcode_media":{"shortcode":"Reel","is_video":true,"video_url":"$cdn/reel.mp4"}}}
+        """.trimIndent())
+        val page = Jsoup.parse("""<script type="application/json">{"contextJSON":$context}</script>""")
+        assertEquals(listOf(InstagramMedia.Asset("$cdn/reel.mp4", true)), InstagramMedia.extract(page, link))
+    }
+
     @Test fun extractsMixedCarouselInOrder() {
         val link = requireNotNull(InstagramMedia.findLink("https://instagram.com/p/Album/"))
         val page = Jsoup.parse("""

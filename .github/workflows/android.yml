@@ -32,13 +32,15 @@ jobs:
         uses: reactivecircus/android-emulator-runner@v2
         env:
           INSTAGRAM_TEST_LINK: ${{ github.event_name == 'push' && github.ref == 'refs/heads/develop' && secrets.INSTAGRAM_TEST_LINK || '' }}
+          INSTAGRAM_TEST_REEL: ${{ github.event_name == 'push' && github.ref == 'refs/heads/develop' && secrets.INSTAGRAM_TEST_REEL || '' }}
+          INSTAGRAM_TEST_STORY: ${{ github.event_name == 'push' && github.ref == 'refs/heads/develop' && secrets.INSTAGRAM_TEST_STORY || '' }}
         with:
           api-level: 36
           target: google_apis
           arch: x86_64
           script: |
             bash scripts/android-startup-smoke.sh app/build/outputs/apk/debug/app-debug.apk
-            if [ -n "$INSTAGRAM_TEST_LINK" ]; then bash scripts/android-instagram-download-smoke.sh; fi
+            status=0; if [ -n "$INSTAGRAM_TEST_LINK" ]; then bash scripts/android-instagram-download-smoke.sh post "$INSTAGRAM_TEST_LINK" || status=1; fi; if [ -n "$INSTAGRAM_TEST_REEL" ]; then bash scripts/android-instagram-download-smoke.sh reel "$INSTAGRAM_TEST_REEL" || status=1; fi; if [ -n "$INSTAGRAM_TEST_STORY" ]; then bash scripts/android-instagram-download-smoke.sh story "$INSTAGRAM_TEST_STORY" || status=1; fi; exit "$status"
       - uses: actions/upload-artifact@v7
         with:
           name: InstagramMediaDownloader-debug
