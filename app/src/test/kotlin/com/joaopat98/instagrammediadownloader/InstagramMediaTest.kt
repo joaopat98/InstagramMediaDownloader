@@ -22,6 +22,28 @@ class InstagramMediaTest {
         assertNull(InstagramMedia.findLink("https://www.instagram.com/profile/"))
     }
 
+    @Test fun acceptsOwnerPrefixedOpenGraphPermalink() {
+        val link = requireNotNull(InstagramMedia.findLink("https://instagram.com/p/Post/"))
+        val page = Jsoup.parse("""
+            <meta property="og:url" content="https://www.instagram.com/creator/p/Post/">
+            <meta property="og:image" content="$cdn/photo.jpg">
+        """.trimIndent())
+        assertEquals(listOf(InstagramMedia.Asset("$cdn/photo.jpg", false)), InstagramMedia.extract(page, link))
+    }
+
+    @Test fun embedPhotoMustMatchTheRequestedPost() {
+        val link = requireNotNull(InstagramMedia.findLink("https://instagram.com/p/Post/"))
+        val page = Jsoup.parse("""
+            <a data-media-type="GraphImage" href="https://www.instagram.com/creator/p/Wrong/">
+              <img class="EmbeddedMediaImage" src="$cdn/wrong.jpg">
+            </a>
+            <a data-media-type="GraphImage" href="https://www.instagram.com/creator/p/Post/">
+              <img class="EmbeddedMediaImage" src="$cdn/photo.jpg">
+            </a>
+        """.trimIndent())
+        assertEquals(InstagramMedia.Asset("$cdn/photo.jpg", false), InstagramMedia.extractEmbeddedPhoto(page, link))
+    }
+
     @Test fun extractsMixedCarouselInOrder() {
         val link = requireNotNull(InstagramMedia.findLink("https://instagram.com/p/Album/"))
         val page = Jsoup.parse("""

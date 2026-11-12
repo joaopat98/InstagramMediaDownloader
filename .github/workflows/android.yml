@@ -30,11 +30,15 @@ jobs:
           sudo udevadm trigger --name-match=kvm
       - name: Test app startup on Android
         uses: reactivecircus/android-emulator-runner@v2
+        env:
+          INSTAGRAM_TEST_LINK: ${{ github.event_name == 'push' && github.ref == 'refs/heads/develop' && secrets.INSTAGRAM_TEST_LINK || '' }}
         with:
           api-level: 36
           target: google_apis
           arch: x86_64
-          script: bash scripts/android-startup-smoke.sh app/build/outputs/apk/debug/app-debug.apk
+          script: |
+            bash scripts/android-startup-smoke.sh app/build/outputs/apk/debug/app-debug.apk
+            if [ -n "$INSTAGRAM_TEST_LINK" ]; then bash scripts/android-instagram-download-smoke.sh; fi
       - uses: actions/upload-artifact@v7
         with:
           name: InstagramMediaDownloader-debug

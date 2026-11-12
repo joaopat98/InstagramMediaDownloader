@@ -14,11 +14,11 @@ internal object InstagramMedia {
     private val linkPattern = Regex("""https?://[^\s<>"“”]+""", RegexOption.IGNORE_CASE)
     private val trailingPunctuation = Regex("""[).,;!\]]+$""")
     private val mediaPath = Regex(
-        """/(?:(p|reel|reels|tv)/([\w-]+)|stories/[\w.]+/(\d+)|share/(?:(?:p|reel|stories)/)?([\w-]+))/?"""
+        """/(?:(?:(?!(?:stories|share)/)[\w.]+/)?(p|reel|reels|tv)/([\w-]+)|stories/[\w.]+/(\d+)|share/(?:(?:p|reel|stories)/)?([\w-]+))/?"""
     )
     private val hosts = setOf("instagram.com", "www.instagram.com", "m.instagram.com")
-    private const val USER_AGENT = "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 " +
-        "(KHTML, like Gecko) Chrome/131.0.0.0 Mobile Safari/537.36"
+    private const val USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 " +
+        "(KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
 
     data class Link(val uri: URI, val kind: String, val id: String)
     data class Asset(val url: String, val video: Boolean)
@@ -40,7 +40,8 @@ internal object InstagramMedia {
 
         val path = uri.path ?: return null
         val (kind, code, storyId, shareCode) = mediaPath.matchEntire(path)?.destructured ?: return null
-        val clean = URI.create("https://www.instagram.com" + path.trimEnd('/') + "/")
+        val cleanPath = if (kind.isNotEmpty()) "/$kind/$code" else path.trimEnd('/')
+        val clean = URI.create("https://www.instagram.com$cleanPath/")
         return when {
             storyId.isNotEmpty() -> Link(clean, "story", storyId)
             shareCode.isNotEmpty() -> Link(clean, "share", shareCode)
@@ -52,18 +53,14 @@ internal object InstagramMedia {
         var link = initialLink
         for (attempt in 0..5) {
             val url = link.uri.toString()
-            val request = Jsoup.connect(url)
-                .userAgent(USER_AGENT)
-                .timeout(12_000)
-                .maxBodySize(12 * 1024 * 1024)
-                .followRedirects(false)
-                .ignoreHttpErrors(true)
-            cookies(url)?.takeIf(String::isNotBlank)?.let { request.header("Cookie", it) }
-            val response = request.execute()
+            val response = request(url, cookies(url)).execute()
             when (val status = response.statusCode()) {
                 in 300..399 -> {
                     val location = response.header("Location")?.let(::parseUri)
-                    link = location?.let(link.uri::resolve)?.let(::parseLink) ?: break
+                    val redirected = location?.let(link.uri::resolve) ?: break
+                    val next = parseLink(redirected) ?: break
+                    // Keep Instagram's redirect target, even when its permalink has an owner prefix.
+                    link = next.copy(uri = URI.create("https://www.instagram.com" + redirected.path))
                 }
                 429 -> throw IOException("Instagram is rate limiting requests. Try again later.")
                 in 500..599 -> throw IOException("Instagram is temporarily unavailable. Try again later.")
@@ -75,8 +72,27 @@ internal object InstagramMedia {
                 else -> break
             }
         }
+        if (link.kind == "p") {
+            val embed = request("https://www.instagram.com/p/${link.id}/embed/").execute()
+            if (embed.statusCode() == 200) extractEmbeddedPhoto(embed.parse(), link)?.let { return listOf(it) }
+        }
         throw Unavailable()
     }
+
+    private fun request(url: String, cookie: String? = null) = Jsoup.connect(url)
+        .userAgent(USER_AGENT)
+        .timeout(12_000)
+        .maxBodySize(12 * 1024 * 1024)
+        .followRedirects(false)
+        .ignoreHttpErrors(true)
+        .apply { cookie?.takeIf(String::isNotBlank)?.let { header("Cookie", it) } }
+
+    fun extractEmbeddedPhoto(page: Document, link: Link): Asset? = page
+        .select("[data-media-type=GraphImage][href] img.EmbeddedMediaImage[src]")
+        .firstNotNullOfOrNull { image ->
+            val permalink = image.closest("[data-media-type=GraphImage][href]")?.attr("href")
+            if (findLink(permalink)?.id == link.id) asset(image.attr("src"), false) else null
+        }
 
     fun extract(page: Document, link: Link): List<Asset> {
         val candidates = page.select("script[type=application/json], script[type=application/ld+json]")
@@ -93,9 +109,8 @@ internal object InstagramMedia {
         if (best != null) return best
 
         // Open Graph metadata can describe a preview or login page.
-        val canonical = meta(page, "og:url").ifEmpty { page.select("link[rel=canonical]").attr("href") }
-        val canonicalLink = findLink(canonical)
-        if (link.kind == "story" || canonicalLink?.id != link.id) return emptyList()
+        val canonicals = listOf(meta(page, "og:url"), page.select("link[rel=canonical]").attr("href"))
+        if (link.kind == "story" || canonicals.none { findLink(it)?.id == link.id }) return emptyList()
 
         val video = sequenceOf("og:video:secure_url", "og:video:url", "og:video")
             .firstNotNullOfOrNull { asset(meta(page, it), true) }
