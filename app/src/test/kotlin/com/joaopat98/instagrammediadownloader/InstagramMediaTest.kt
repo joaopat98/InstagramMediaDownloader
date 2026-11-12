@@ -89,6 +89,21 @@ class InstagramMediaTest {
         InstagramMedia.resolve(link) { "csrftoken=fixture; sessionid=" }
     }
 
+    @Test fun refusesIncompleteCarouselEvenWithACoverImage() {
+        val link = requireNotNull(InstagramMedia.findLink("https://instagram.com/p/Album/"))
+        val page = Jsoup.parse("""
+            <meta property="og:url" content="https://instagram.com/p/Album/">
+            <meta property="og:image" content="$cdn/cover.jpg">
+            <script type="application/json">
+            {"shortcode":"Album","__typename":"GraphSidecar","edge_sidecar_to_children":{"edges":[
+              {"node":{"display_url":"$cdn/photo.jpg"}},
+              {"node":{"__typename":"GraphVideo","display_url":"$cdn/video-preview.jpg"}}
+            ]}}
+            </script>
+        """.trimIndent())
+        assertTrue(InstagramMedia.extract(page, link).isEmpty())
+    }
+
     @Test fun selectsExactStory() {
         val link = requireNotNull(InstagramMedia.findLink("https://instagram.com/stories/example/123/"))
         val page = Jsoup.parse("""

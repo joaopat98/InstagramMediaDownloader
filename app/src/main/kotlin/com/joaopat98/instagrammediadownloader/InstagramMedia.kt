@@ -56,6 +56,7 @@ internal object InstagramMedia {
     fun resolve(initialLink: Link, cookies: (String) -> String? = { null }): List<Asset> {
         var link = initialLink
         var photoPreview: Asset? = null
+        var carousel = false
         for (attempt in 0..5) {
             val url = link.uri.toString()
             val cookie = cookies(url)
@@ -73,9 +74,10 @@ internal object InstagramMedia {
                 in 500..599 -> throw IOException("Instagram is temporarily unavailable. Try again later.")
                 200 -> {
                     val page = response.parse()
-                    val assets = extract(page, link, includePhotoPreview = false)
-                    if (assets.isNotEmpty()) return assets
-                    photoPreview = openGraphPhoto(page, link)
+                    val media = readMedia(page, link)
+                    if (media.assets.isNotEmpty()) return media.assets
+                    carousel = media.carousel
+                    if (!carousel) photoPreview = openGraphPhoto(page, link)
                     break
                 }
                 else -> break
@@ -87,15 +89,18 @@ internal object InstagramMedia {
                 val embed = request("https://www.instagram.com/$path/${link.id}/embed/").execute()
                 if (embed.statusCode() == 200) {
                     val page = embed.parse()
-                    val assets = extract(page, link, includePhotoPreview = false)
-                    if (assets.isNotEmpty()) return assets
-                    if (link.kind == "p") extractEmbeddedPhoto(page, link)?.let { return listOf(it) }
+                    val media = readMedia(page, link)
+                    if (media.assets.isNotEmpty() && (!carousel || media.carousel)) return media.assets
+                    carousel = carousel || media.carousel
+                    if (!carousel && link.kind == "p") {
+                        extractEmbeddedPhoto(page, link)?.let { return listOf(it) }
+                    }
                 }
             } catch (error: IOException) {
                 if (photoPreview == null) throw error
             }
         }
-        photoPreview?.let { return listOf(it) }
+        if (!carousel) photoPreview?.let { return listOf(it) }
         throw Unavailable()
     }
 
@@ -115,6 +120,14 @@ internal object InstagramMedia {
         }
 
     fun extract(page: Document, link: Link, includePhotoPreview: Boolean = true): List<Asset> {
+        val media = readMedia(page, link)
+        if (media.assets.isNotEmpty() || media.carousel || !includePhotoPreview) return media.assets
+        return listOfNotNull(openGraphPhoto(page, link))
+    }
+
+    private data class PageMedia(val assets: List<Asset>, val carousel: Boolean = false)
+
+    private fun readMedia(page: Document, link: Link): PageMedia {
         val candidates = page.select("script")
             .asSequence()
             .flatMap { script ->
@@ -125,18 +138,26 @@ internal object InstagramMedia {
                         parseJson(body.substringAfter("s.handle(", ""))
                     else -> null
                 }
-                matchingMedia(data, link, 0)
+                matchingPosts(data, link, 0)
             }
-        val best = candidates.maxWithOrNull(compareBy({ it.size }, { it.count(Asset::video) }))
-        if (best != null) return best
+            .toList()
+        val carousels = candidates.filter(::isCarousel)
+        val isCarousel = carousels.isNotEmpty() ||
+            page.select(".Embed[data-media-type=GraphSidecar][data-permalink]")
+                .any { findLink(it.attr("data-permalink"))?.id == link.id }
+        if (isCarousel) {
+            val slides = carousels.map(::mediaFrom).maxByOrNull { it.size }.orEmpty()
+            return PageMedia(slides, carousel = true)
+        }
+        val best = candidates.map(::mediaFrom).maxWithOrNull(compareBy({ it.size }, { it.count(Asset::video) }))
+        if (!best.isNullOrEmpty()) return PageMedia(best)
 
         // Open Graph metadata can describe a preview or login page.
-        if (link.kind == "story" || !matchesCanonical(page, link)) return emptyList()
+        if (link.kind == "story" || !matchesCanonical(page, link)) return PageMedia(emptyList())
 
         val video = sequenceOf("og:video:secure_url", "og:video:url", "og:video")
             .firstNotNullOfOrNull { asset(meta(page, it), true) }
-        if (video != null) return listOf(video)
-        return if (includePhotoPreview) listOfNotNull(openGraphPhoto(page, link)) else emptyList()
+        return PageMedia(listOfNotNull(video))
     }
 
     private fun openGraphPhoto(page: Document, link: Link): Asset? {
@@ -144,7 +165,11 @@ internal object InstagramMedia {
             return null
         }
         return sequenceOf("og:image:secure_url", "og:image:url", "og:image")
-            .firstNotNullOfOrNull { asset(meta(page, it), false) }
+            .firstNotNullOfOrNull {
+                asset(meta(page, it), false)?.takeUnless { preview ->
+                    Regex("""(?:[?&])stp=c\d""").containsMatchIn(preview.url)
+                }
+            }
     }
 
     private fun matchesCanonical(page: Document, link: Link): Boolean =
@@ -159,21 +184,18 @@ internal object InstagramMedia {
         null
     }
 
-    private fun matchingMedia(value: Any?, link: Link, depth: Int): Sequence<List<Asset>> = sequence {
+    private fun matchingPosts(value: Any?, link: Link, depth: Int): Sequence<JSONObject> = sequence {
         if (depth > 90) return@sequence
         when (value) {
             is JSONObject -> {
-                if (matches(value, link)) {
-                    val items = mediaFrom(value)
-                    if (items.isNotEmpty()) yield(items)
-                }
+                if (matches(value, link)) yield(value)
                 for (key in value.keys()) {
                     val child = if (key == "contextJSON") parseJson(value.optString(key)) else value.opt(key)
-                    yieldAll(matchingMedia(child, link, depth + 1))
+                    yieldAll(matchingPosts(child, link, depth + 1))
                 }
             }
             is JSONArray -> for (index in 0 until value.length()) {
-                yieldAll(matchingMedia(value.opt(index), link, depth + 1))
+                yieldAll(matchingPosts(value.opt(index), link, depth + 1))
             }
         }
     }
@@ -185,20 +207,29 @@ internal object InstagramMedia {
         return link.id == item.optString("pk") || link.id == item.optString("id").substringBefore('_')
     }
 
+    private fun isCarousel(item: JSONObject): Boolean = item.optInt("media_type") == 8 ||
+        item.optString("__typename") == "GraphSidecar" || item.optJSONObject("edge_sidecar_to_children") != null ||
+        item.optJSONArray("carousel_media") != null
+
     private fun mediaFrom(item: JSONObject): List<Asset> {
+        if (!isCarousel(item)) return listOfNotNull(single(item))
         val sidecar = item.optJSONObject("edge_sidecar_to_children")
-        val children = sidecar?.optJSONArray("edges") ?: item.optJSONArray("carousel_media")
-        if (children == null) return listOfNotNull(single(item))
-        return children.objects()
-            .mapNotNull { if (sidecar == null) it else it.optJSONObject("node") }
-            .mapNotNull(::single)
-            .distinctBy(Asset::url)
-            .toList()
+        val children = sidecar?.optJSONArray("edges") ?: item.optJSONArray("carousel_media") ?: return emptyList()
+        val expected = maxOf(item.optInt("carousel_media_count"), sidecar?.optInt("count") ?: 0)
+        if (children.length() < expected || sidecar?.optJSONObject("page_info")?.optBoolean("has_next_page") == true) {
+            return emptyList()
+        }
+        return (0 until children.length()).map { index ->
+            val child = children.optJSONObject(index) ?: return emptyList()
+            val node = if (sidecar == null) child else child.optJSONObject("node") ?: return emptyList()
+            single(node) ?: return emptyList()
+        }
     }
 
     private fun single(item: JSONObject): Asset? {
         val video = asset(item.optString("video_url"), true) ?: largest(item.optJSONArray("video_versions"), true)
-        if (video != null || item.optBoolean("is_video") || item.optInt("media_type") == 2) return video
+        if (video != null || item.optBoolean("is_video") || item.optInt("media_type") == 2 ||
+            item.optString("__typename") == "GraphVideo") return video
 
         val images = item.optJSONObject("image_versions2")?.optJSONArray("candidates")
         return largest(images, false) ?: asset(item.optString("display_url"), false)

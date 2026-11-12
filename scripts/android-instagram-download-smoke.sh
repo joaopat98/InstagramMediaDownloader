@@ -2,6 +2,7 @@
 set -euo pipefail
 kind=$1
 link=$2
+expected=${3:-1}
 activity=com.joaopat98.instagrammediadownloader/.MainActivity
 directory=/sdcard/Download/Souvenir
 shortcode=$(printf '%s' "$link" | sed -E 's@[?#].*@@; s@/$@@; s@.*/@@')
@@ -12,6 +13,27 @@ adb shell am start -W -a android.intent.action.SEND -t text/plain \
 scratch=$(mktemp -d)
 trap 'rm -rf "$scratch"' EXIT
 for _ in {1..60}; do
+    if (( expected > 1 )); then
+        saved_files=$(adb shell "find '$directory' -type f -name 'Instagram_${shortcode}_*' 2>/dev/null" || true)
+        if (( $(grep -c . <<< "$saved_files" || true) != expected )); then
+            sleep 1
+            continue
+        fi
+        count=0
+        for ((slide = 1; slide <= expected; slide++)); do
+            saved=$(grep -E "_${slide}\.[^/]+$" <<< "$saved_files" || true)
+            [[ -n $saved ]] && adb pull "$saved" "$scratch/slide" >/dev/null 2>&1 || break
+            mime=$(file -b --mime-type "$scratch/slide")
+            [[ $mime == image/* || $mime == video/* ]] || break
+            count=$((count + 1))
+        done
+        if (( count == expected )); then
+            printf 'Android saved all %d carousel slides as valid media.\n' "$count"
+            exit 0
+        fi
+        sleep 1
+        continue
+    fi
     saved=$(adb shell "find '$directory' -type f -name 'Instagram_${shortcode}_*' -print -quit 2>/dev/null" || true)
     if [[ -n $saved ]] && adb pull "$saved" "$scratch/media" >/dev/null 2>&1; then
         mime=$(file -b --mime-type "$scratch/media")
