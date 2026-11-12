@@ -55,6 +55,7 @@ internal object InstagramMedia {
 
     fun resolve(initialLink: Link, cookies: (String) -> String? = { null }): List<Asset> {
         var link = initialLink
+        var photoPreview: Asset? = null
         for (attempt in 0..5) {
             val url = link.uri.toString()
             val cookie = cookies(url)
@@ -71,8 +72,10 @@ internal object InstagramMedia {
                 429 -> throw IOException("Instagram is rate limiting requests. Try again later.")
                 in 500..599 -> throw IOException("Instagram is temporarily unavailable. Try again later.")
                 200 -> {
-                    val assets = extract(response.parse(), link)
+                    val page = response.parse()
+                    val assets = extract(page, link, includePhotoPreview = false)
                     if (assets.isNotEmpty()) return assets
+                    photoPreview = openGraphPhoto(page, link)
                     break
                 }
                 else -> break
@@ -80,14 +83,19 @@ internal object InstagramMedia {
         }
         if (link.kind in setOf("p", "reel", "reels")) {
             val path = if (link.kind == "p") "p" else "reel"
-            val embed = request("https://www.instagram.com/$path/${link.id}/embed/").execute()
-            if (embed.statusCode() == 200) {
-                val page = embed.parse()
-                val assets = extract(page, link)
-                if (assets.isNotEmpty()) return assets
-                if (link.kind == "p") extractEmbeddedPhoto(page, link)?.let { return listOf(it) }
+            try {
+                val embed = request("https://www.instagram.com/$path/${link.id}/embed/").execute()
+                if (embed.statusCode() == 200) {
+                    val page = embed.parse()
+                    val assets = extract(page, link, includePhotoPreview = false)
+                    if (assets.isNotEmpty()) return assets
+                    if (link.kind == "p") extractEmbeddedPhoto(page, link)?.let { return listOf(it) }
+                }
+            } catch (error: IOException) {
+                if (photoPreview == null) throw error
             }
         }
+        photoPreview?.let { return listOf(it) }
         throw Unavailable()
     }
 
@@ -106,7 +114,7 @@ internal object InstagramMedia {
             asset(embed.select("img.EmbeddedMediaImage[src]").attr("src"), false)
         }
 
-    fun extract(page: Document, link: Link): List<Asset> {
+    fun extract(page: Document, link: Link, includePhotoPreview: Boolean = true): List<Asset> {
         val candidates = page.select("script")
             .asSequence()
             .flatMap { script ->
@@ -123,18 +131,25 @@ internal object InstagramMedia {
         if (best != null) return best
 
         // Open Graph metadata can describe a preview or login page.
-        val canonicals = listOf(meta(page, "og:url"), page.select("link[rel=canonical]").attr("href"))
-        if (link.kind == "story" || canonicals.none { findLink(it)?.id == link.id }) return emptyList()
+        if (link.kind == "story" || !matchesCanonical(page, link)) return emptyList()
 
         val video = sequenceOf("og:video:secure_url", "og:video:url", "og:video")
             .firstNotNullOfOrNull { asset(meta(page, it), true) }
         if (video != null) return listOf(video)
-        if (link.kind != "p" || meta(page, "og:type").startsWith("video")) return emptyList()
-
-        val photo = sequenceOf("og:image:secure_url", "og:image:url", "og:image")
-            .firstNotNullOfOrNull { asset(meta(page, it), false) }
-        return listOfNotNull(photo)
+        return if (includePhotoPreview) listOfNotNull(openGraphPhoto(page, link)) else emptyList()
     }
+
+    private fun openGraphPhoto(page: Document, link: Link): Asset? {
+        if (link.kind != "p" || !matchesCanonical(page, link) || meta(page, "og:type").startsWith("video")) {
+            return null
+        }
+        return sequenceOf("og:image:secure_url", "og:image:url", "og:image")
+            .firstNotNullOfOrNull { asset(meta(page, it), false) }
+    }
+
+    private fun matchesCanonical(page: Document, link: Link): Boolean =
+        sequenceOf(meta(page, "og:url"), page.select("link[rel=canonical]").attr("href"))
+            .any { findLink(it)?.id == link.id }
 
     private fun meta(page: Document, property: String) = page.select("meta[property='$property']").attr("content")
 

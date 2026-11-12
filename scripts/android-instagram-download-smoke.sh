@@ -17,6 +17,10 @@ for _ in {1..60}; do
         mime=$(file -b --mime-type "$scratch/media")
         if [[ $mime == video/* || ( $kind != reel && $mime == image/* ) ]]; then
             printf 'Android saved the %s as %s (%s bytes).\n' "$kind" "$mime" "$(wc -c < "$scratch/media")"
+            if [[ $mime == image/* ]]; then
+                dimensions=$(file -b "$scratch/media" | grep -Eo '[0-9]+x[0-9]+' | tail -n 1 || true)
+                printf 'Saved image dimensions: %s\n' "$dimensions"
+            fi
             exit 0
         fi
     fi

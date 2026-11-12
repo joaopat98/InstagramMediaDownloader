@@ -29,6 +29,7 @@ class InstagramMediaTest {
             <meta property="og:image" content="$cdn/photo.jpg">
         """.trimIndent())
         assertEquals(listOf(InstagramMedia.Asset("$cdn/photo.jpg", false)), InstagramMedia.extract(page, link))
+        assertTrue(InstagramMedia.extract(page, link, includePhotoPreview = false).isEmpty())
     }
 
     @Test fun embedPhotoMustMatchTheRequestedPost() {
