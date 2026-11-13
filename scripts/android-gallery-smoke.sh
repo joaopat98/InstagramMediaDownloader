@@ -30,14 +30,23 @@ sys.exit(1)
 PY
         then
             read -r x y <"$scratch/tap"
+            adb logcat -c
             adb shell input tap "$x" "$y"
             for _ in {1..10}; do
-                if adb shell dumpsys activity activities | grep -E 'topResumedActivity.*ChooserActivity' >/dev/null; then
+                if adb shell dumpsys activity activities |
+                    grep -Ei 'topResumedActivity.*(chooser|resolver)' >/dev/null; then
+                    echo 'Saved media appeared in Souvenir and opened the Android app chooser.'
+                    return 0
+                fi
+                adb shell uiautomator dump "$xml" >/dev/null
+                if adb shell cat "$xml" | grep -Ei 'package="[^"]*(intentresolver|chooser)[^"]*"' >/dev/null; then
                     echo 'Saved media appeared in Souvenir and opened the Android app chooser.'
                     return 0
                 fi
                 sleep 1
             done
+            adb shell dumpsys activity activities | grep -Ei 'resumedactivity|android.intent.action.CHOOSER' || true
+            adb logcat -d -s ActivityTaskManager:I AndroidRuntime:E | tail -n 30
             echo 'Tapping the saved media did not open the chooser.'
             return 1
         fi
