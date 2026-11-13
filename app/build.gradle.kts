@@ -17,6 +17,7 @@ android {
         applicationId = "com.joaopat98.instagrammediadownloader"
         minSdk = 29
         targetSdk = 35
+        testInstrumentationRunner = "com.joaopat98.instagrammediadownloader.GalleryFixture"
         versionCode = releaseBuildNumber ?: 1
         versionName = releaseBuildNumber?.let { "1.0.$it" } ?: "1.0"
     }

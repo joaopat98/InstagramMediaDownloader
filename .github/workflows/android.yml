@@ -22,7 +22,7 @@ jobs:
         with:
           cache-provider: basic
       - name: Build and verify
-        run: bash gradlew --no-daemon testDebugUnitTest lintDebug assembleDebug
+        run: bash gradlew --no-daemon testDebugUnitTest lintDebug assembleDebug assembleDebugAndroidTest
       - name: Enable emulator acceleration
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
@@ -41,6 +41,7 @@ jobs:
           arch: x86_64
           script: |
             bash scripts/android-startup-smoke.sh app/build/outputs/apk/debug/app-debug.apk
+            bash scripts/android-gallery-smoke.sh
             if [ -n "$INSTAGRAM_TEST_LINK" ]; then bash scripts/android-instagram-download-smoke.sh post "$INSTAGRAM_TEST_LINK"; fi
             if [ -n "$INSTAGRAM_TEST_REEL" ]; then bash scripts/android-instagram-download-smoke.sh reel "$INSTAGRAM_TEST_REEL"; fi
             if [ -n "$INSTAGRAM_TEST_STORY" ]; then bash scripts/android-instagram-download-smoke.sh story "$INSTAGRAM_TEST_STORY"; fi
