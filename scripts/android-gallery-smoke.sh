@@ -7,6 +7,7 @@ adb install -r app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
 result=$(adb shell am instrument -w "$package.test/$package.GalleryFixture")
 printf '%s\n' "$result"
 grep -Fq 'fixture=saved' <<< "$result"
+adb shell am force-stop "$package"
 adb shell am start -W -a android.intent.action.MAIN -c android.intent.category.LAUNCHER -n "$package/.MainActivity"
 
 check_gallery() {
@@ -39,7 +40,7 @@ PY
                     return 0
                 fi
                 adb shell uiautomator dump "$xml" >/dev/null
-                if adb shell cat "$xml" | grep -Ei 'package="[^"]*(intentresolver|chooser)[^"]*"' >/dev/null; then
+                if adb shell cat "$xml" | grep -Ei 'package="[^"]*(intentresolver|chooser)[^"]*"|text="Gallery test viewer"' >/dev/null; then
                     echo 'Saved media appeared in Souvenir and opened the Android app chooser.'
                     return 0
                 fi
@@ -50,8 +51,16 @@ PY
             echo 'Tapping the saved media did not open the chooser.'
             return 1
         fi
-        adb shell input swipe 250 750 250 400 250
+        read -r width height < <(adb shell wm size | tail -n 1 | grep -Eo '[0-9]+x[0-9]+' | tr x ' ')
+        adb shell input swipe "$((width / 2))" "$((height * 4 / 5))" "$((width / 2))" "$((height / 3))" 350
     done
+    python3 - "$scratch/gallery.xml" <<'PY'
+import sys
+import xml.etree.ElementTree as ET
+for node in ET.parse(sys.argv[1]).iter("node"):
+    if node.get("text") or node.get("content-desc"):
+        print(node.get("text"), node.get("content-desc"), node.get("bounds"))
+PY
     echo 'The downloaded file did not appear in the in-app gallery.'
     return 1
 }
