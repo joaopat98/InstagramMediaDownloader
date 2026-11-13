@@ -7,6 +7,7 @@
         android:theme="@android:style/Theme.Material.Light.NoActionBar"
         android:usesCleartextTraffic="false">
         <activity android:name=".InstagramLoginActivity" android:exported="false" />
+        <activity android:name=".StoryViewerActivity" android:exported="false" />
         <activity
             android:name=".MainActivity"
             android:exported="true"

@@ -91,6 +91,11 @@ class MainActivity : Activity() {
         }
         input.setText(link.uri.toString())
         input.setSelection(input.length())
+        if (link.kind == "story" && InstagramLoginActivity.hasSession()) {
+            startActivity(Intent(this, StoryViewerActivity::class.java)
+                .putExtra(StoryViewerActivity.EXTRA, link.uri.toString()))
+            return
+        }
         if (!shared) {
             getSystemService(InputMethodManager::class.java)?.hideSoftInputFromWindow(input.windowToken, 0)
         }
