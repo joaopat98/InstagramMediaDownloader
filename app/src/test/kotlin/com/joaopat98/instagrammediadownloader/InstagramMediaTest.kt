@@ -83,10 +83,10 @@ class InstagramMediaTest {
         )
     }
 
-    @Test(expected = InstagramMedia.StorySignInRequired::class)
-    fun rejectsSignedOutStoryBeforeFetching() {
+    @Test(expected = InstagramMedia.StoryUnsupported::class)
+    fun rejectsStoryBeforeFetching() {
         val link = requireNotNull(InstagramMedia.findLink("https://instagram.com/stories/example/123/"))
-        InstagramMedia.resolve(link) { "csrftoken=fixture; sessionid=" }
+        InstagramMedia.resolve(link)
     }
 
     @Test fun refusesIncompleteCarouselEvenWithACoverImage() {
@@ -104,15 +104,18 @@ class InstagramMediaTest {
         assertTrue(InstagramMedia.extract(page, link).isEmpty())
     }
 
-    @Test fun selectsExactStory() {
-        val link = requireNotNull(InstagramMedia.findLink("https://instagram.com/stories/example/123/"))
-        val page = Jsoup.parse("""
-            <script type="application/json">
-            {"items":[{"id":"12_1","display_url":"$cdn/wrong.jpg"},
-              {"id":"123_1","video_url":"$cdn/story.mp4","is_video":true}]}
-            </script>
-        """.trimIndent())
-        assertEquals(listOf(InstagramMedia.Asset("$cdn/story.mp4", true)), InstagramMedia.extract(page, link))
+    @Test(expected = InstagramMedia.AccountRequired::class)
+    fun stopsOnLoginRedirect() {
+        InstagramMedia.checkPublicAccess(302, "/accounts/login/?next=/p/Example/")
+    }
+
+    @Test(expected = InstagramMedia.AccountRequired::class)
+    fun stopsOnCheckpointPage() {
+        InstagramMedia.checkPublicAccess(200, page = Jsoup.parse("""<form action="/challenge/example/"></form>"""))
+    }
+
+    @Test fun permitsPublicPageWithLoginLink() {
+        InstagramMedia.checkPublicAccess(200, page = Jsoup.parse("""<a href="/accounts/login/">Sign in</a>"""))
     }
 
     @Test fun usesMatchingPostMetadataButDoesNotSaveReelThumbnail() {

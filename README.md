@@ -2,10 +2,10 @@
 
 Android app for saving Instagram photos and videos to `Downloads/Souvenir`.
 
-- In Instagram, open a post, reel, or story, tap **Share**, and choose **Souvenir** from the Android Sharesheet. The app starts looking for media immediately.
+- In Instagram, open a public post or Reel, tap **Share**, and choose **Souvenir** from the Android Sharesheet. The app starts looking for media immediately.
 - Or open the downloader, paste an Instagram link, and tap **Download**.
 
-The app contacts Instagram directly and downloads the image and video files it finds, including carousel items when Instagram exposes them. Story downloads require sign-in. Sign in on Instagram’s own page inside the app to retry automatically. The session stays on the device and is used for Instagram page requests. Expired stories, content your account cannot access, and links whose pages do not expose media files can still fail.
+Souvenir makes signed-out requests only. It does not sign in to Instagram or use saved Instagram cookies. It can save public posts, Reels, and carousel items when Instagram exposes the media. Stories are not downloaded. If a link is unavailable or requires sign-in or verification, Souvenir offers **Open in Instagram** (or opens the link in a browser if Instagram is not installed).
 
 ## Build
 

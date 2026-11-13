@@ -31,7 +31,8 @@ adb shell am start -W -a android.intent.action.SEND -t text/plain \
 check_home
 adb shell uiautomator dump /sdcard/imd-startup.xml
 ui=$(adb shell cat /sdcard/imd-startup.xml)
-grep -Fq 'Sign in to Instagram to download this story.' <<< "$ui"
+grep -Fq 'Souvenir does not download Stories.' <<< "$ui"
+grep -Fq 'Open in Instagram' <<< "$ui"
 
 adb shell am force-stop "$package"
 adb shell am start -W -a android.intent.action.SEND -t text/plain \

@@ -22,11 +22,8 @@ internal object InstagramMedia {
     data class Link(val uri: URI, val kind: String, val id: String)
     data class Asset(val url: String, val video: Boolean)
     class Unavailable : IOException()
-    class StorySignInRequired : IOException()
-
-    fun hasSession(cookie: String?): Boolean = cookie?.split(';')
-        ?.any { it.trimStart().startsWith("sessionid=") && it.substringAfter('=').isNotBlank() }
-        ?: false
+    class StoryUnsupported : IOException()
+    class AccountRequired : IOException()
 
     fun findLink(text: String?): Link? = linkPattern.findAll(text.orEmpty()).firstNotNullOfOrNull {
         parseUri(it.value.replace(trailingPunctuation, ""))?.let(::parseLink)
@@ -53,15 +50,14 @@ internal object InstagramMedia {
         }
     }
 
-    fun resolve(initialLink: Link, cookies: (String) -> String? = { null }): List<Asset> {
+    fun resolve(initialLink: Link): List<Asset> {
         var link = initialLink
         var photoPreview: Asset? = null
         var carousel = false
         for (attempt in 0..5) {
-            val url = link.uri.toString()
-            val cookie = cookies(url)
-            if (link.kind == "story" && !hasSession(cookie)) throw StorySignInRequired()
-            val response = request(url, cookie).execute()
+            if (link.kind == "story") throw StoryUnsupported()
+            val response = request(link.uri.toString()).execute()
+            checkPublicAccess(response.statusCode(), response.header("Location"))
             when (val status = response.statusCode()) {
                 in 300..399 -> {
                     val location = response.header("Location")?.let(::parseUri)
@@ -74,6 +70,7 @@ internal object InstagramMedia {
                 in 500..599 -> throw IOException("Instagram is temporarily unavailable. Try again later.")
                 200 -> {
                     val page = response.parse()
+                    checkPublicAccess(response.statusCode(), page = page)
                     val media = readMedia(page, link)
                     if (media.assets.isNotEmpty()) return media.assets
                     carousel = media.carousel
@@ -87,8 +84,10 @@ internal object InstagramMedia {
             val path = if (link.kind == "p") "p" else "reel"
             try {
                 val embed = request("https://www.instagram.com/$path/${link.id}/embed/").execute()
+                checkPublicAccess(embed.statusCode(), embed.header("Location"))
                 if (embed.statusCode() == 200) {
                     val page = embed.parse()
+                    checkPublicAccess(embed.statusCode(), page = page)
                     val media = readMedia(page, link)
                     if (media.assets.isNotEmpty() && (!carousel || media.carousel)) return media.assets
                     carousel = carousel || media.carousel
@@ -96,6 +95,8 @@ internal object InstagramMedia {
                         extractEmbeddedPhoto(page, link)?.let { return listOf(it) }
                     }
                 }
+            } catch (error: AccountRequired) {
+                throw error
             } catch (error: IOException) {
                 if (photoPreview == null) throw error
             }
@@ -104,13 +105,24 @@ internal object InstagramMedia {
         throw Unavailable()
     }
 
-    private fun request(url: String, cookie: String? = null) = Jsoup.connect(url)
+    internal fun checkPublicAccess(status: Int, location: String? = null, page: Document? = null) {
+        fun isAccountPath(url: String?): Boolean {
+            val path = url?.let(::parseUri)?.path?.trimEnd('/') ?: return false
+            return listOf("/accounts/login", "/challenge", "/checkpoint")
+                .any { path == it || path.startsWith("$it/") }
+        }
+        if (status == 401 || status == 403 || isAccountPath(location) ||
+            page?.select("form[action], link[rel=canonical][href], meta[property=og:url][content]")?.any {
+                isAccountPath(it.attr("action").ifEmpty { it.attr("href").ifEmpty { it.attr("content") } })
+            } == true) throw AccountRequired()
+    }
+
+    private fun request(url: String) = Jsoup.connect(url)
         .userAgent(USER_AGENT)
         .timeout(12_000)
         .maxBodySize(12 * 1024 * 1024)
         .followRedirects(false)
         .ignoreHttpErrors(true)
-        .apply { cookie?.takeIf(String::isNotBlank)?.let { header("Cookie", it) } }
 
     fun extractEmbeddedPhoto(page: Document, link: Link): Asset? = page
         .select(".Embed[data-media-type=GraphImage][data-permalink]")
@@ -153,7 +165,7 @@ internal object InstagramMedia {
         if (!best.isNullOrEmpty()) return PageMedia(best)
 
         // Open Graph metadata can describe a preview or login page.
-        if (link.kind == "story" || !matchesCanonical(page, link)) return PageMedia(emptyList())
+        if (!matchesCanonical(page, link)) return PageMedia(emptyList())
 
         val video = sequenceOf("og:video:secure_url", "og:video:url", "og:video")
             .firstNotNullOfOrNull { asset(meta(page, it), true) }
@@ -200,12 +212,8 @@ internal object InstagramMedia {
         }
     }
 
-    private fun matches(item: JSONObject, link: Link): Boolean {
-        if (link.kind != "story") {
-            return link.id == item.optString("shortcode") || link.id == item.optString("code")
-        }
-        return link.id == item.optString("pk") || link.id == item.optString("id").substringBefore('_')
-    }
+    private fun matches(item: JSONObject, link: Link): Boolean =
+        link.id == item.optString("shortcode") || link.id == item.optString("code")
 
     private fun isCarousel(item: JSONObject): Boolean = item.optInt("media_type") == 8 ||
         item.optString("__typename") == "GraphSidecar" || item.optJSONObject("edge_sidecar_to_children") != null ||

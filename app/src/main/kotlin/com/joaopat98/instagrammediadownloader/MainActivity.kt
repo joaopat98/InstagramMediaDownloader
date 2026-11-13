@@ -26,7 +26,6 @@ import android.view.WindowInsets
 import android.view.WindowInsetsController
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputMethodManager
-import android.webkit.CookieManager
 import android.widget.Button
 import android.widget.EditText
 import android.widget.ImageView
@@ -45,7 +44,7 @@ class MainActivity : Activity() {
     private lateinit var input: EditText
     private lateinit var download: Button
     private lateinit var status: TextView
-    private lateinit var signIn: Button
+    private lateinit var openInstagram: Button
     private lateinit var state: DownloadState
     private lateinit var gallery: LinearLayout
     private var galleryItems: List<DownloadGallery.Item>? = null
@@ -115,14 +114,6 @@ class MainActivity : Activity() {
         acceptShare(intent)
     }
 
-    @Suppress("DEPRECATION")
-    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
-        super.onActivityResult(requestCode, resultCode, data)
-        if (requestCode == SIGN_IN && resultCode == RESULT_OK) {
-            state.retryLink?.let { submit(it.toString(), shared = true) }
-        }
-    }
-
     override fun onSaveInstanceState(outState: Bundle) {
         outState.putString("link", input.text.toString())
         super.onSaveInstanceState(outState)
@@ -149,11 +140,6 @@ class MainActivity : Activity() {
         }
         input.setText(link.uri.toString())
         input.setSelection(input.length())
-        if (link.kind == "story" && InstagramLoginActivity.hasSession()) {
-            startActivity(Intent(this, StoryViewerActivity::class.java)
-                .putExtra(StoryViewerActivity.EXTRA, link.uri.toString()))
-            return
-        }
         if (!shared) {
             getSystemService(InputMethodManager::class.java)?.hideSoftInputFromWindow(input.windowToken, 0)
         }
@@ -166,8 +152,10 @@ class MainActivity : Activity() {
         worker.execute {
             val result = try {
                 queueDownloads(app, link)
-            } catch (_: InstagramMedia.StorySignInRequired) {
-                Result(app.getString(R.string.story_sign_in_required), error = true, retryLink = link.uri)
+            } catch (_: InstagramMedia.StoryUnsupported) {
+                Result(app.getString(R.string.story_unsupported), error = true, retryLink = link.uri)
+            } catch (_: InstagramMedia.AccountRequired) {
+                Result(app.getString(R.string.instagram_account_required), error = true, retryLink = link.uri)
             } catch (_: InstagramMedia.Unavailable) {
                 Result(app.getString(R.string.media_unavailable), error = true, retryLink = link.uri)
             } catch (error: IOException) {
@@ -193,8 +181,7 @@ class MainActivity : Activity() {
         status.setTextColor(if (state.error) errorColor else muted)
         status.text = state.message
         status.visibility = if (state.message.isEmpty()) View.GONE else View.VISIBLE
-        signIn.visibility = if (state.retryLink != null && state.active.isEmpty() &&
-            !InstagramLoginActivity.hasSession()) View.VISIBLE else View.GONE
+        openInstagram.visibility = if (state.retryLink != null && state.active.isEmpty()) View.VISIBLE else View.GONE
     }
 
     @Suppress("DEPRECATION")
@@ -272,16 +259,26 @@ class MainActivity : Activity() {
         }
         content.add(status, 16)
 
-        signIn = Button(this, null, android.R.attr.borderlessButtonStyle).apply {
+        openInstagram = Button(this, null, android.R.attr.borderlessButtonStyle).apply {
             isAllCaps = false
-            setText(R.string.sign_in)
+            setText(R.string.open_instagram)
             setTextColor(accent)
             setOnClickListener {
-                @Suppress("DEPRECATION")
-                startActivityForResult(Intent(this@MainActivity, InstagramLoginActivity::class.java), SIGN_IN)
+                state.retryLink?.let { link ->
+                    val view = Intent(Intent.ACTION_VIEW, Uri.parse(link.toString()))
+                    try {
+                        startActivity(Intent(view).setPackage("com.instagram.android"))
+                    } catch (_: ActivityNotFoundException) {
+                        try {
+                            startActivity(view)
+                        } catch (_: ActivityNotFoundException) {
+                            state.update(getString(R.string.instagram_viewer_unavailable), error = true)
+                        }
+                    }
+                }
             }
         }
-        content.add(signIn, 8)
+        content.add(openInstagram, 8)
 
         content.add(Button(this, null, android.R.attr.borderlessButtonStyle).apply {
             isAllCaps = false
@@ -416,7 +413,6 @@ class MainActivity : Activity() {
     private data class Result(val message: String, val error: Boolean = false, val retryLink: URI? = null)
 
     private companion object {
-        const val SIGN_IN = 1
         val paper = Color.rgb(255, 247, 252)
         val ink = Color.rgb(47, 24, 56)
         val muted = Color.rgb(105, 73, 108)
@@ -427,7 +423,7 @@ class MainActivity : Activity() {
         val main = Handler(Looper.getMainLooper())
 
         fun queueDownloads(context: Context, link: InstagramMedia.Link): Result {
-            val assets = InstagramMedia.resolve(link, CookieManager.getInstance()::getCookie)
+            val assets = InstagramMedia.resolve(link)
             val manager = checkNotNull(context.getSystemService(DownloadManager::class.java))
             val batch = UUID.randomUUID().toString().take(8)
             for ((index, asset) in assets.withIndex()) {
