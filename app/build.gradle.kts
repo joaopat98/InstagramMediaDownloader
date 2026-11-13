@@ -45,6 +45,7 @@ kotlin {
 }
 
 dependencies {
+    implementation("androidx.core:core:1.13.1")
     implementation("androidx.webkit:webkit:1.12.1")
     implementation("org.jsoup:jsoup:1.18.3")
     testImplementation("junit:junit:4.13.2")

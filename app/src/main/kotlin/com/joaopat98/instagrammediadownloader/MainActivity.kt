@@ -3,9 +3,12 @@ package com.joaopat98.instagrammediadownloader
 import android.app.Activity
 import android.app.DownloadManager
 import android.content.ActivityNotFoundException
+import android.content.BroadcastReceiver
+import android.content.ClipData
 import android.content.Context
 import android.content.Intent
-import android.content.res.ColorStateList
+import android.content.IntentFilter
+import android.database.ContentObserver
 import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
@@ -15,7 +18,9 @@ import android.os.Bundle
 import android.os.Environment
 import android.os.Handler
 import android.os.Looper
+import android.provider.MediaStore
 import android.text.InputType
+import android.util.Size
 import android.view.View
 import android.view.WindowInsets
 import android.view.WindowInsetsController
@@ -24,9 +29,11 @@ import android.view.inputmethod.InputMethodManager
 import android.webkit.CookieManager
 import android.widget.Button
 import android.widget.EditText
+import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
+import androidx.core.content.ContextCompat
 import java.io.IOException
 import java.net.URI
 import java.util.Locale
@@ -40,6 +47,57 @@ class MainActivity : Activity() {
     private lateinit var status: TextView
     private lateinit var signIn: Button
     private lateinit var state: DownloadState
+    private lateinit var gallery: LinearLayout
+    private var galleryItems: List<DownloadGallery.Item>? = null
+    private var galleryLimit = 12
+    private var galleryRequest = 0
+    private val refreshGallery = Runnable { loadGallery() }
+    private val galleryObserver = object : ContentObserver(main) {
+        override fun onChange(selfChange: Boolean) = scheduleGallery()
+    }
+    private val downloadReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context, intent: Intent) = scheduleGallery()
+    }
+
+    override fun onStart() {
+        super.onStart()
+        val filter = IntentFilter(DownloadManager.ACTION_DOWNLOAD_COMPLETE)
+        ContextCompat.registerReceiver(this, downloadReceiver, filter, ContextCompat.RECEIVER_EXPORTED)
+        contentResolver.registerContentObserver(MediaStore.Downloads.EXTERNAL_CONTENT_URI, true, galleryObserver)
+        scheduleGallery()
+    }
+
+    override fun onStop() {
+        unregisterReceiver(downloadReceiver)
+        contentResolver.unregisterContentObserver(galleryObserver)
+        main.removeCallbacks(refreshGallery)
+        galleryRequest++
+        super.onStop()
+    }
+
+    private fun scheduleGallery() {
+        main.removeCallbacks(refreshGallery)
+        main.postDelayed(refreshGallery, 250)
+    }
+
+    private fun loadGallery() {
+        val request = ++galleryRequest
+        val context = applicationContext
+        galleryWorker.execute {
+            val items = try {
+                DownloadGallery.read(context)
+            } catch (_: RuntimeException) {
+                null
+            }
+            main.post {
+                if (request != galleryRequest || isDestroyed) return@post
+                if (items != galleryItems || gallery.childCount == 0) {
+                    galleryItems = items
+                    renderGallery()
+                }
+            }
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -130,6 +188,7 @@ class MainActivity : Activity() {
 
     private fun render() {
         download.isEnabled = state.active.isEmpty()
+        download.alpha = if (download.isEnabled) 1f else 0.65f
         download.setText(if (download.isEnabled) R.string.download else R.string.finding_media)
         status.setTextColor(if (state.error) errorColor else muted)
         status.text = state.message
@@ -184,7 +243,7 @@ class MainActivity : Activity() {
             inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_URI
             imeOptions = EditorInfo.IME_ACTION_GO
             setPadding(dp(16), dp(14), dp(16), dp(14))
-            background = surface(Color.WHITE, Color.rgb(175, 193, 184))
+            background = surface(Color.WHITE, Color.rgb(224, 193, 219))
             setOnEditorActionListener { _, action, _ ->
                 if (action != EditorInfo.IME_ACTION_GO || !download.isEnabled) false
                 else {
@@ -200,11 +259,10 @@ class MainActivity : Activity() {
             setTextColor(Color.WHITE)
             textSize = 16f
             minHeight = dp(52)
-            background = surface(green, green)
-            backgroundTintList = ColorStateList(
-                arrayOf(intArrayOf(-android.R.attr.state_enabled), intArrayOf()),
-                intArrayOf(Color.rgb(90, 113, 103), green)
-            )
+            background = GradientDrawable(GradientDrawable.Orientation.TL_BR,
+                intArrayOf(Color.rgb(100, 48, 182), Color.rgb(163, 32, 119), Color.rgb(184, 48, 83))).apply {
+                cornerRadius = dp(14).toFloat()
+            }
             setOnClickListener { submit(input.text.toString()) }
         }
         content.add(download, 12)
@@ -217,7 +275,7 @@ class MainActivity : Activity() {
         signIn = Button(this, null, android.R.attr.borderlessButtonStyle).apply {
             isAllCaps = false
             setText(R.string.sign_in)
-            setTextColor(green)
+            setTextColor(accent)
             setOnClickListener {
                 @Suppress("DEPRECATION")
                 startActivityForResult(Intent(this@MainActivity, InstagramLoginActivity::class.java), SIGN_IN)
@@ -228,7 +286,7 @@ class MainActivity : Activity() {
         content.add(Button(this, null, android.R.attr.borderlessButtonStyle).apply {
             isAllCaps = false
             setText(R.string.open_downloads)
-            setTextColor(green)
+            setTextColor(accent)
             setOnClickListener {
                 try {
                     startActivity(Intent(DownloadManager.ACTION_VIEW_DOWNLOADS))
@@ -238,7 +296,89 @@ class MainActivity : Activity() {
             }
         }, 12)
 
+        gallery = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        content.add(gallery, 20)
         content.requestFocus()
+    }
+
+    private fun renderGallery() {
+        gallery.removeAllViews()
+        gallery.addView(label(getString(R.string.saved_media), 22f, ink).apply {
+            isAccessibilityHeading = true
+            typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
+        })
+        val items = galleryItems
+        if (items.isNullOrEmpty()) {
+            val message = if (items == null) R.string.gallery_unavailable else R.string.gallery_empty
+            gallery.add(label(getString(message), 15f, muted), 8)
+            return
+        }
+        for (pair in items.take(galleryLimit).chunked(2)) {
+            val row = LinearLayout(this)
+            for ((index, item) in pair.withIndex()) {
+                val tile = LinearLayout(this).apply {
+                    orientation = LinearLayout.VERTICAL
+                    background = surface(Color.WHITE, Color.rgb(237, 213, 232))
+                    clipToOutline = true
+                    isFocusable = true
+                    isClickable = true
+                    foreground = android.util.TypedValue().let {
+                        theme.resolveAttribute(android.R.attr.selectableItemBackground, it, true)
+                        getDrawable(it.resourceId)
+                    }
+                    setOnClickListener { openMedia(item) }
+                }
+                val video = item.mime.startsWith("video/")
+                tile.contentDescription = getString(if (video) R.string.open_saved_video else R.string.open_saved_photo, item.name)
+                val image = ImageView(this).apply {
+                    scaleType = ImageView.ScaleType.FIT_CENTER
+                    setBackgroundColor(Color.rgb(250, 232, 245))
+                    importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+                }
+                tile.addView(image, LinearLayout.LayoutParams(-1, dp(138)))
+                tile.addView(label(getString(if (video) R.string.saved_video else R.string.saved_photo), 14f, accent).apply {
+                    setPadding(dp(12), dp(10), dp(12), dp(10))
+                    importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+                })
+                row.addView(tile, LinearLayout.LayoutParams(0, -2, 1f).apply {
+                    if (index > 0) marginStart = dp(10)
+                })
+                val context = applicationContext
+                val size = Size(dp(320), dp(240))
+                galleryWorker.execute {
+                    val preview = DownloadGallery.thumbnail(context, item, size)
+                    main.post { if (image.isAttachedToWindow) image.setImageBitmap(preview) }
+                }
+            }
+            if (pair.size == 1) row.addView(View(this), LinearLayout.LayoutParams(0, 0, 1f).apply {
+                marginStart = dp(10)
+            })
+            gallery.add(row, 10)
+        }
+        if (galleryLimit < items.size) {
+            gallery.add(Button(this, null, android.R.attr.borderlessButtonStyle).apply {
+                isAllCaps = false
+                setText(R.string.gallery_show_more)
+                setTextColor(accent)
+                setOnClickListener {
+                    galleryLimit += 12
+                    renderGallery()
+                }
+            }, 8)
+        }
+    }
+
+    private fun openMedia(item: DownloadGallery.Item) {
+        val view = Intent(Intent.ACTION_VIEW).apply {
+            setDataAndType(item.uri, item.mime)
+            clipData = ClipData.newRawUri(item.name, item.uri)
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+        try {
+            startActivity(Intent.createChooser(view, getString(R.string.open_media_with)))
+        } catch (_: ActivityNotFoundException) {
+            state.update(getString(R.string.media_viewer_unavailable), error = true)
+        }
     }
 
     private fun surface(color: Int, border: Int) = GradientDrawable().apply {
@@ -277,12 +417,13 @@ class MainActivity : Activity() {
 
     private companion object {
         const val SIGN_IN = 1
-        val paper = Color.rgb(245, 248, 244)
-        val ink = Color.rgb(24, 45, 38)
-        val muted = Color.rgb(66, 90, 80)
-        val green = Color.rgb(35, 70, 59)
+        val paper = Color.rgb(255, 247, 252)
+        val ink = Color.rgb(47, 24, 56)
+        val muted = Color.rgb(105, 73, 108)
+        val accent = Color.rgb(130, 35, 123)
         val errorColor = Color.rgb(150, 40, 34)
         val worker = Executors.newSingleThreadExecutor()
+        val galleryWorker = Executors.newSingleThreadExecutor()
         val main = Handler(Looper.getMainLooper())
 
         fun queueDownloads(context: Context, link: InstagramMedia.Link): Result {

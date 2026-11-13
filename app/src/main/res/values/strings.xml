@@ -13,6 +13,16 @@
     <string name="more_links">%1$s\nMore links are waiting.</string>
     <string name="partial_queue">%1$d of %2$d files queued. Android couldn’t queue the rest.</string>
     <string name="open_downloads">Open Downloads</string>
+    <string name="saved_media">Saved media</string>
+    <string name="gallery_empty">Your downloads will appear here.</string>
+    <string name="gallery_unavailable">Couldn’t load saved media.</string>
+    <string name="gallery_show_more">Show more</string>
+    <string name="saved_photo">Photo</string>
+    <string name="saved_video">Video</string>
+    <string name="open_saved_photo">Open photo %1$s</string>
+    <string name="open_saved_video">Open video %1$s</string>
+    <string name="open_media_with">Open with</string>
+    <string name="media_viewer_unavailable">Couldn’t open this file.</string>
     <string name="open_files">Open the Downloads folder in your Files app.</string>
     <plurals name="queued">
         <item quantity="one">%d file queued in Downloads.</item>
